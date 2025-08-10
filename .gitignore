@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+models/
+data/*.csv.gz # The raw data is tracked by DVC, not Git
+.dvc/cache
+cdk.out/

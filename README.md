@@ -140,3 +140,6 @@ The process is designed to be code-free:
 | **Infrastructure** | **AWS CDK** | Allows defining infrastructure in Python, keeping the entire stack in one language and enabling more powerful abstractions than raw CloudFormation/Terraform. |
 | **Compute** | **SageMaker Jobs & AWS Lambda** | Uses managed, serverless compute tailored to the task: SageMaker for heavy training and Lambda for lightweight, fast optimization logic. |
 | **Security** | **IAM, KMS, Secrets Manager, VPC** | A defense-in-depth strategy: least-privilege roles, encryption everywhere with KMS, secure secret storage, and network isolation with a VPC. |
+
+
+

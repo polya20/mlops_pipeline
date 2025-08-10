@@ -1,0 +1,5 @@
+outs:
+- md5: 219d5fc5ef689ca737984e1889d10643
+  size: 24912
+  hash: md5
+  path: lottery_sales.csv

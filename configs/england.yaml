@@ -1,0 +1,17 @@
+country_name: england
+data_path: "data/lottery_sales.csv.gz"
+model_dir: "models/"
+# Production paths will be S3 URIs passed by Step Functions
+min_jackpot: 5.0
+max_jackpot: 50.0
+min_payout_ratio_12m: 0.40
+prob_single_ticket_win: 0.000000022 # 1 in ~45M
+secondary_prize_payout_percentage: 0.25
+ticket_price: 2.50
+optimization_grid_steps: 200
+# --- Constraint Data (for demonstration) ---
+# In a real system, this would be a database or a separate historical data file
+# For this project, we'll read the history from the main CSV
+history:
+  total_prizes_paid_last_51_weeks: 250000000 # Example value
+  total_sales_revenue_last_51_weeks: 600000000 # Example value

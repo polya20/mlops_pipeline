@@ -1,0 +1,4 @@
+pandas
+scikit-learn==1.3.0 # Pinning versions is crucial
+pyyaml
+numpy
