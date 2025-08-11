@@ -93,7 +93,7 @@ class JackpotOptimizerStack(Stack):
                 )
             ],
             output_data_config=sfn_tasks.OutputDataConfig(
-                s3_output_path=f"s3://{artifact_bucket.bucket_name}/models"
+                s3_output_location=sfn_tasks.S3Location.from_bucket(artifact_bucket, "models/")
             ),
             result_path="$.Model"
         )
