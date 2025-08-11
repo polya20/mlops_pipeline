@@ -77,7 +77,7 @@ class JackpotOptimizerStack(Stack):
                 ),
                 training_input_mode=sfn_tasks.InputMode.FILE
             ),
-            hyper_parameters={
+            hyperparameters={
                 "config_s3_uri": f"s3://{artifact_bucket.bucket_name}/configs/england.yaml",
                 "data_path": f"s3://{artifact_bucket.bucket_name}/data/lottery_sales.csv.gz"
             },
