@@ -28,7 +28,7 @@ class JackpotOptimizerStack(Stack):
             versioned=True
         )
         
-        # This construct automatically uploads local files to S3 upon deployment
+        # This construct automatically uploads local files from ../configs and ../data to S3 upon deployment
         s3_deployment.BucketDeployment(self, "DeployPipelineAssets",
             sources=[
                 s3_deployment.Source.asset("../configs"),
@@ -61,11 +61,11 @@ class JackpotOptimizerStack(Stack):
         artifact_bucket.grant_read(optimizer_lambda)
         optimizer_lambda.add_to_role_policy(iam.PolicyStatement(
             actions=["secretsmanager:GetSecretValue"],
-            resources=["arn:aws:secretsmanager:*:*:secret:lottery/*"]
+            resources=["arn:aws:secretsmanager:*:*:secret:lottery/*"] # Scoped to secrets with the "lottery/" prefix
         ))
 
         recommendation_topic = sns.Topic(self, "RecommendationTopic")
-        recommendation_topic.add_subscription(subscriptions.EmailSubscription("your-email@example.com")) # <-- CHANGE THIS
+        recommendation_topic.add_subscription(subscriptions.EmailSubscription("subhojit20@gmail.com")) 
 
         # --- 2. Step Functions Workflow Definition ---
         
@@ -74,8 +74,10 @@ class JackpotOptimizerStack(Stack):
             training_job_name=sfn.JsonPath.string_at("$$.Execution.Name"),
             role=sagemaker_role,
             algorithm_specification=sfn_tasks.AlgorithmSpecification(
-                training_image=sfn_tasks.AlgorithmSpecificationConfig(
-                    image_uri=ecr_repository.repository_uri_for_tag(image_tag)
+                # Use the correct factory method to specify the training image from ECR
+                training_image=sfn_tasks.TrainingImage.from_ecr_repository(
+                    repository=ecr_repository,
+                    tag=image_tag
                 ),
                 training_input_mode=sfn_tasks.InputMode.FILE
             ),
@@ -98,7 +100,7 @@ class JackpotOptimizerStack(Stack):
             lambda_function=optimizer_lambda,
             payload=sfn.TaskInput.from_object({
                 "model_s3_path": sfn.JsonPath.string_at("$.Model.ModelArtifacts.S3ModelArtifacts"),
-                "country": "england"
+                "country": "england" # This can be made dynamic in a Map state
             }),
             result_path="$.Recommendation"
         )
@@ -129,6 +131,6 @@ class JackpotOptimizerStack(Stack):
         # --- 3. Event-Driven Trigger ---
         # Rule to trigger the state machine weekly
         events.Rule(self, "WeeklyTriggerRule",
-            schedule=events.Schedule.cron(minute="0", hour="20", week_day="WED"),
+            schedule=events.Schedule.cron(minute="0", hour="20", week_day="WED"), # Every Wednesday at 8 PM UTC
             targets=[targets.SfnStateMachine(state_machine)]
         )
