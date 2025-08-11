@@ -1,67 +1,35 @@
-name: Deploy Jackpot Optimizer Pipeline to AWS
+name: Debug OIDC Connection
 on:
   push:
     branches: [ main ]
-env:
-  AWS_REGION: "us-east-1" # <-- CHANGE TO YOUR REGION
-  ECR_REPOSITORY: "jackpot-optimizer"
 
 jobs:
-  deploy:
+  debug-oidc:
     runs-on: ubuntu-latest
     permissions:
+      id-token: write # This is essential to request the token
       contents: read
-      id-token: write # Required for secure OIDC connection to AWS
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Configure AWS Credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          # IMPORTANT: Set these secrets in GitHub repo settings
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-
-      - name: Install Dependencies & Run Pytest
+      - name: Debug OIDC Token
         run: |
-          pip install -r requirements.txt
-          pip install pytest
-          pytest tests/
-      
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-
-      - name: Build, tag, and push image to ECR
-        id: build-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
-
-      # --- START OF FIX ---
-      # STEP 1: Set up the Node.js environment
-      - name: Setup Node.js for CDK
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      # STEP 2: Run the CDK deployment commands in a separate step
-      - name: Deploy AWS CDK Stack
-        run: |
-          cd iac
-          npm install -g aws-cdk
-          pip install -r requirements.txt
-          # Pass the new image tag to the CDK stack for deployment
-          cdk deploy --require-approval never --context image_tag=${{ steps.build-image.outputs.image_tag }}
-      # --- END OF FIX ---
+          echo "Requesting OIDC Token from GitHub..."
+          # The audience 'sts.amazonaws.com' is what we need for AWS
+          TOKEN=$(curl -s -X POST -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" -H "Content-Type: application/json" "$ACTIONS_ID_TOKEN_REQUEST_URL" -d '{"audience": "sts.amazonaws.com"}' | jq -r .value)
+          
+          echo "Token received. Decoding JWT..."
+          
+          # Split the token and decode the payload part
+          PAYLOAD=$(echo $TOKEN | cut -d. -f2)
+          DECODED_PAYLOAD=$(echo $PAYLOAD | base64 --decode)
+          
+          echo "-----------------------------------"
+          echo "OIDC TOKEN PAYLOAD:"
+          echo "$DECODED_PAYLOAD" | jq .
+          echo "-----------------------------------"
+          
+          # Extract and print the critical 'sub' claim
+          SUB_CLAIM=$(echo $DECODED_PAYLOAD | jq -r .sub)
+          echo "THE CRITICAL 'sub' CLAIM IS:"
+          echo "$SUB_CLAIM"
+          echo "-----------------------------------"
