@@ -87,7 +87,7 @@ class JackpotOptimizerStack(Stack):
                     data_source=sfn_tasks.DataSource(
                         s3_data_source=sfn_tasks.S3DataSource(
                             s3_data_type=sfn_tasks.S3DataType.S3_PREFIX,
-                            s3_uri=f"s3://{artifact_bucket.bucket_name}/data/"  # Changed from S3Location to s3_uri
+                            s3_location=sfn_tasks.S3Location.from_bucket(artifact_bucket, "data/")
                         )
                     )
                 )
