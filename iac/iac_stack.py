@@ -1,5 +1,5 @@
 from aws_cdk import (
-    Stack, CfnParameter, Duration, RemovalPolicy,
+    Stack, Duration, RemovalPolicy,
     aws_s3 as s3,
     aws_ecr as ecr,
     aws_iam as iam,
@@ -87,7 +87,7 @@ class JackpotOptimizerStack(Stack):
                     data_source=sfn_tasks.DataSource(
                         s3_data_source=sfn_tasks.S3DataSource(
                             s3_data_type=sfn_tasks.S3DataType.S3_PREFIX,
-                            s3_location=sfn.S3Location(
+                            s3_location=sfn_tasks.S3Location(
                                 bucket=artifact_bucket,
                                 key_prefix="data/"
                             )
