@@ -1,4 +1,5 @@
 import os, boto3, json, pickle,yaml
+from collections import list
 from urllib.parse import urlparse
 from src.optimise import find_optimal_jackpot
 
