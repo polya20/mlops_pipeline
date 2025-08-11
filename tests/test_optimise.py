@@ -1,7 +1,23 @@
 import pytest
+import pandas as pd
 from src.optimise import is_payout_ratio_valid
 
-def test_payout_ratio_is_valid():
+@pytest.fixture
+def sample_history_df():
+    """
+    Creates a small, mock pandas DataFrame to simulate the last 51 weeks of history.
+    The actual values don't matter much for these specific tests, as the logic
+    in the `is_payout_ratio_valid` function currently uses the `config` for history.
+    However, it's a required argument and good practice to provide it.
+    """
+    data = {'week_start': pd.to_datetime(['2025-01-01']),
+            'tickets_sold': [10000000],
+            'net_revenue': [4000000],
+            'marketing_spend': [1000000]}
+    # In a real test, this would contain 51 rows of representative data.
+    return pd.DataFrame(data)
+
+def test_payout_ratio_is_valid(sample_history_df): # <-- Add the fixture as an argument
     """Test that the ratio constraint passes when it should."""
     config = {
         'min_payout_ratio_12m': 0.40,
@@ -12,10 +28,10 @@ def test_payout_ratio_is_valid():
             'total_sales_revenue_last_51_weeks': 1_000_000_000
         }
     }
-    # Expected new ratio will be > 0.40, so this should pass
-    assert is_payout_ratio_valid(20_000_000, 10_000_000, config) is True
+    # --- FIX IS HERE: Added 'sample_history_df' as the third argument ---
+    assert is_payout_ratio_valid(20_000_000, 10_000_000, sample_history_df, config) is True
 
-def test_payout_ratio_is_invalid():
+def test_payout_ratio_is_invalid(sample_history_df): # <-- Add the fixture as an argument
     """Test that the ratio constraint fails when it should."""
     config = {
         'min_payout_ratio_12m': 0.40,
@@ -26,5 +42,5 @@ def test_payout_ratio_is_invalid():
             'total_sales_revenue_last_51_weeks': 1_000_000_000
         }
     }
-    # Expected new ratio will be < 0.40, so this should fail
-    assert is_payout_ratio_valid(1_000_000, 1_000_000, config) is False
+    # --- FIX IS HERE: Added 'sample_history_df' as the third argument ---
+    assert is_payout_ratio_valid(1_000_000, 1_000_000, sample_history_df, config) is False
