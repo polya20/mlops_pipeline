@@ -1,22 +1,22 @@
-# iac/app.py
 #!/usr/bin/env python3
 import aws_cdk as cdk
 from iac_stack import JackpotOptimizerStack
 
+# Create the CDK App
 app = cdk.App()
 
-# --- START OF FIX ---
-# Define the synthesizer with the qualifier
-# This tells the CDK to use the roles and resources from the qualified bootstrap stack
+# Define the synthesizer with a qualifier to use our custom bootstrap roles
+# This is necessary for ECR push permissions in the CI/CD pipeline
 qualifier_synthesizer = cdk.DefaultStackSynthesizer(
-    qualifier="hnb659fds"
+    qualifier="hnb659fds" # Use the same qualifier from the bootstrap command
 )
 
+# Instantiate the MLOps pipeline stack
 JackpotOptimizerStack(
     app, 
     "JackpotOptimizerStack",
-    synthesizer=qualifier_synthesizer # <-- Pass the synthesizer to the stack
+    synthesizer=qualifier_synthesizer
 )
-# --- END OF FIX ---
 
+# Synthesize the CloudFormation template
 app.synth()

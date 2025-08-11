@@ -18,21 +18,24 @@ class JackpotOptimizerStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        # This parameter receives the Docker image tag from the CI/CD pipeline
         image_tag = self.node.try_get_context("image_tag") or "latest"
 
+        # --- 1. Core Infrastructure ---
         artifact_bucket = s3.Bucket(self, "ArtifactBucket",
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
             versioned=True
         )
         
+        # This construct automatically uploads local files to S3 upon deployment
         s3_deployment.BucketDeployment(self, "DeployPipelineAssets",
             sources=[
                 s3_deployment.Source.asset("../configs"),
                 s3_deployment.Source.asset("../data")
             ],
             destination_bucket=artifact_bucket,
-            exclude=["*.dvc", "*/.gitignore"]
+            exclude=["*.dvc", "*/.gitignore"] # Exclude unnecessary files
         )
 
         ecr_repository = ecr.Repository.from_repository_name(self, "MLOpsRepo", "jackpot-optimizer")
@@ -62,29 +65,24 @@ class JackpotOptimizerStack(Stack):
         ))
 
         recommendation_topic = sns.Topic(self, "RecommendationTopic")
-        recommendation_topic.add_subscription(subscriptions.EmailSubscription("your-email@example.com"))
+        recommendation_topic.add_subscription(subscriptions.EmailSubscription("your-email@example.com")) # <-- CHANGE THIS
 
-        # --- START OF FIX ---
-        # The TrainingImage helper class does not exist. Instead, we construct the ECR image URI manually.
-        # The SageMakerCreateTrainingJob task expects the full URI string.
-        training_image_uri = ecr_repository.repository_uri_for_tag(image_tag)
+        # --- 2. Step Functions Workflow Definition ---
         
+        # Task to run the SageMaker Training Job
         train_task = sfn_tasks.SageMakerCreateTrainingJob(self, "TrainSalesModel",
             training_job_name=sfn.JsonPath.string_at("$$.Execution.Name"),
             role=sagemaker_role,
             algorithm_specification=sfn_tasks.AlgorithmSpecification(
-                training_image_config=sfn_tasks.TrainingImageConfig(
-                    training_image_uri=training_image_uri
+                training_image=sfn_tasks.AlgorithmSpecificationConfig(
+                    image_uri=ecr_repository.repository_uri_for_tag(image_tag)
                 ),
                 training_input_mode=sfn_tasks.InputMode.FILE
             ),
             hyper_parameters={
-                # Note: The arguments must match what your train.py argparse expects
                 "config_s3_uri": f"s3://{artifact_bucket.bucket_name}/configs/england.yaml",
                 "data_path": f"s3://{artifact_bucket.bucket_name}/data/lottery_sales.csv.gz"
             },
-            # ... (rest of the code is the same) ...
-        # --- END OF FIX ---
             input_data_config=[sfn_tasks.Channel(channel_name="training", data_source=sfn_tasks.DataSource(
                 s3_data_source=sfn_tasks.S3DataSource(
                     s3_data_type=sfn_tasks.S3DataType.S3_PREFIX,
@@ -95,12 +93,42 @@ class JackpotOptimizerStack(Stack):
             result_path="$.Model"
         )
         
-        # ... (rest of the CDK stack is the same) ...
-        optimize_task = sfn_tasks.LambdaInvoke(...)
-        notify_task = sfn_tasks.SnsPublish(...)
-        failure_state = sfn.Fail(...)
+        # Task to run the Lambda-based optimization
+        optimize_task = sfn_tasks.LambdaInvoke(self, "OptimizeJackpot",
+            lambda_function=optimizer_lambda,
+            payload=sfn.TaskInput.from_object({
+                "model_s3_path": sfn.JsonPath.string_at("$.Model.ModelArtifacts.S3ModelArtifacts"),
+                "country": "england"
+            }),
+            result_path="$.Recommendation"
+        )
+        
+        # Task to publish the result to SNS
+        notify_task = sfn_tasks.SnsPublish(self, "NotifyStakeholders",
+            topic=recommendation_topic,
+            message=sfn.TaskInput.from_json_path_at("$.Recommendation.Payload.body"),
+            subject="Weekly Jackpot Recommendation"
+        )
+        
+        # State for handling failures
+        failure_state = sfn.Fail(self, "PipelineFailed",
+            cause="A step in the MLOps pipeline failed.",
+            error="JobFailed"
+        )
+
+        # Chain the workflow together with error handling
         chain = sfn.Chain.start(train_task).next(optimize_task).next(notify_task)
         train_task.add_catch(failure_state, result_path="$.error-info")
         optimize_task.add_catch(failure_state, result_path="$.error-info")
-        state_machine = sfn.StateMachine(...)
-        rule = events.Rule(...)
+
+        state_machine = sfn.StateMachine(self, "JackpotStateMachine",
+            definition=chain,
+            timeout=Duration.hours(1)
+        )
+
+        # --- 3. Event-Driven Trigger ---
+        # Rule to trigger the state machine weekly
+        events.Rule(self, "WeeklyTriggerRule",
+            schedule=events.Schedule.cron(minute="0", hour="20", week_day="WED"),
+            targets=[targets.SfnStateMachine(state_machine)]
+        )
