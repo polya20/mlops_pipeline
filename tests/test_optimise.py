@@ -31,16 +31,19 @@ def test_payout_ratio_is_valid(sample_history_df): # <-- Add the fixture as an a
     # --- FIX IS HERE: Added 'sample_history_df' as the third argument ---
     assert is_payout_ratio_valid(20_000_000, 10_000_000, sample_history_df, config) is True
 
-def test_payout_ratio_is_invalid(sample_history_df): # <-- Add the fixture as an argument
+# in tests/test_optimise.py
+
+def test_payout_ratio_is_invalid(sample_history_df):
     """Test that the ratio constraint fails when it should."""
     config = {
         'min_payout_ratio_12m': 0.40,
         'ticket_price': 2.50,
         'secondary_prize_payout_percentage': 0.25,
         'history': {
-            'total_prizes_paid_last_51_weeks': 300_000_000, # Lower history
+            'total_prizes_paid_last_51_weeks': 300_000_000,
             'total_sales_revenue_last_51_weeks': 1_000_000_000
         }
     }
-    # --- FIX IS HERE: Added 'sample_history_df' as the third argument ---
-    assert is_payout_ratio_valid(1_000_000, 1_000_000, sample_history_df, config) is False
+    # This combination should result in a ratio < 0.40, so the function should return False.
+    result = is_payout_ratio_valid(1_000_000, 1_000_000, sample_history_df, config)
+    assert result is False # <-- Clearer assertion
