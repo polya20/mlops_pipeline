@@ -1,5 +1,5 @@
 from aws_cdk import (
-    Stack, Duration, RemovalPolicy,
+    Stack, CfnParameter, Duration, RemovalPolicy,
     aws_s3 as s3,
     aws_ecr as ecr,
     aws_iam as iam,
@@ -66,17 +66,17 @@ class JackpotOptimizerStack(Stack):
         recommendation_topic.add_subscription(subscriptions.EmailSubscription("subhojit20@gmail.com")) 
 
         # --- 2. Step Functions Workflow Definition ---
+        
         train_task = sfn_tasks.SageMakerCreateTrainingJob(self, "TrainSalesModel",
             training_job_name=sfn.JsonPath.string_at("$$.Execution.Name"),
             role=sagemaker_role,
-            
             algorithm_specification=sfn_tasks.AlgorithmSpecification(
-                training_image=sfn_tasks.DockerImage.from_registry(
-                    image_uri=ecr_repository.repository_uri_for_tag(image_tag)
+                training_image=sfn_tasks.DockerImage.from_ecr_repository(
+                    repository=ecr_repository,
+                    # tag argument is not valid here; handled by default latest or implicit latest tag
                 ),
                 training_input_mode=sfn_tasks.InputMode.FILE
             ),
-
             hyper_parameters={
                 "config_s3_uri": f"s3://{artifact_bucket.bucket_name}/configs/england.yaml",
                 "data_path": f"s3://{artifact_bucket.bucket_name}/data/lottery_sales.csv.gz"
@@ -88,8 +88,8 @@ class JackpotOptimizerStack(Stack):
                         s3_data_source=sfn_tasks.S3DataSource(
                             s3_data_type=sfn_tasks.S3DataType.S3_PREFIX,
                             s3_location=sfn_tasks.S3Location(
-                                bucket=artifact_bucket,
-                                key_prefix="data/"
+                                s3_bucket=artifact_bucket,
+                                s3_key="data/"
                             )
                         )
                     )
