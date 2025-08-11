@@ -34,7 +34,7 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
           pytest tests/
-
+      
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
@@ -49,13 +49,19 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Deploy AWS CDK Stack
+      # --- START OF FIX ---
+      # STEP 1: Set up the Node.js environment
+      - name: Setup Node.js for CDK
         uses: actions/setup-node@v3
         with:
           node-version: '18'
+
+      # STEP 2: Run the CDK deployment commands in a separate step
+      - name: Deploy AWS CDK Stack
         run: |
           cd iac
           npm install -g aws-cdk
           pip install -r requirements.txt
           # Pass the new image tag to the CDK stack for deployment
           cdk deploy --require-approval never --context image_tag=${{ steps.build-image.outputs.image_tag }}
+      # --- END OF FIX ---
