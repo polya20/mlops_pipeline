@@ -49,7 +49,7 @@ class JackpotOptimizerStack(Stack):
 
         optimizer_lambda = _lambda.DockerImageFunction(self, "OptimizerFunction",
             code=_lambda.DockerImageCode.from_ecr(ecr_repository,
-                tag=image_tag,
+                tag_or_digest=image_tag,  # Changed from 'tag' to 'tag_or_digest'
                 cmd=["lambda_handler.optimizer.handler.lambda_handler"]
             ),
             memory_size=1024,
@@ -87,10 +87,7 @@ class JackpotOptimizerStack(Stack):
                     data_source=sfn_tasks.DataSource(
                         s3_data_source=sfn_tasks.S3DataSource(
                             s3_data_type=sfn_tasks.S3DataType.S3_PREFIX,
-                            s3_location=sfn_tasks.S3Location(
-                                s3_bucket=artifact_bucket,
-                                s3_key="data/"
-                            )
+                            s3_uri=f"s3://{artifact_bucket.bucket_name}/data/"  # Changed from S3Location to s3_uri
                         )
                     )
                 )
