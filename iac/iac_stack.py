@@ -63,24 +63,30 @@ class JackpotOptimizerStack(Stack):
         ))
 
         recommendation_topic = sns.Topic(self, "RecommendationTopic")
-        recommendation_topic.add_subscription(subscriptions.EmailSubscription("your-email@example.com")) # <-- CHANGE THIS
+        recommendation_topic.add_subscription(subscriptions.EmailSubscription("subhojit20@gmail.com")) 
 
         # --- 2. Step Functions Workflow Definition ---
         
         train_task = sfn_tasks.SageMakerCreateTrainingJob(self, "TrainSalesModel",
             training_job_name=sfn.JsonPath.string_at("$$.Execution.Name"),
+            role=sagemaker_role,
             
-            # --- START OF FINAL FIX ---
-            # The AlgorithmSpecification parameter expects a TaskInput object,
-            # which resolves to a dictionary matching the SageMaker API payload.
-            algorithm_specification=sfn.TaskInput.from_object({
-                "TrainingImage": ecr_repository.repository_uri_for_tag(image_tag),
-                "TrainingInputMode": "File"
-            }),
-            hyper_parameters=sfn.TaskInput.from_object({
+            # --- START OF FINAL FIX (Based on your correct analysis) ---
+            # The training_image parameter expects a DockerImage object,
+            # which is created using the from_ecr_repository factory method.
+            algorithm_specification=sfn_tasks.AlgorithmSpecification(
+                training_image=sfn_tasks.DockerImage.from_ecr_repository(
+                    repository=ecr_repository,
+                    tag=image_tag
+                ),
+                training_input_mode=sfn_tasks.InputMode.FILE
+            ),
+            # --- END OF FINAL FIX ---
+
+            hyper_parameters={
                 "config_s3_uri": f"s3://{artifact_bucket.bucket_name}/configs/england.yaml",
                 "data_path": f"s3://{artifact_bucket.bucket_name}/data/lottery_sales.csv.gz"
-            }),
+            },
             input_data_config=[
                 sfn_tasks.Channel(
                     channel_name="training",
@@ -95,10 +101,7 @@ class JackpotOptimizerStack(Stack):
                     )
                 )
             ],
-            # --- END OF FINAL FIX ---
-
             output_data_config=sfn_tasks.OutputDataConfig(s3_output_path=f"s3://{artifact_bucket.bucket_name}/models"),
-            role=sagemaker_role,
             result_path="$.Model"
         )
         
