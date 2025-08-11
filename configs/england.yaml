@@ -15,3 +15,6 @@ optimization_grid_steps: 200
 history:
   total_prizes_paid_last_51_weeks: 250000000 # Example value
   total_sales_revenue_last_51_weeks: 600000000 # Example value
+
+safety_buffer: 5000000
+available_cash_secret_name: "lottery/england/available_cash" 

@@ -1,0 +1,61 @@
+name: Deploy Jackpot Optimizer Pipeline to AWS
+on:
+  push:
+    branches: [ main ]
+env:
+  AWS_REGION: "us-east-1" # <-- CHANGE TO YOUR REGION
+  ECR_REPOSITORY: "jackpot-optimizer"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Required for secure OIDC connection to AWS
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # IMPORTANT: Set these secrets in GitHub repo settings
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubAction-CDK-DeployRole 
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies & Run Pytest
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+          pytest tests/
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Deploy AWS CDK Stack
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+        run: |
+          cd iac
+          npm install -g aws-cdk
+          pip install -r requirements.txt
+          # Pass the new image tag to the CDK stack for deployment
+          cdk deploy --require-approval never --context image_tag=${{ steps.build-image.outputs.image_tag }}

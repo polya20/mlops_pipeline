@@ -10,6 +10,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY ./src ./src
+COPY ./configs ./configs    
+
+
+COPY ./lambda_handler ./lambda_handler
+
 
 # Set entrypoint
 ENTRYPOINT ["python"]
+
+
+

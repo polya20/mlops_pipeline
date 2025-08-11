@@ -1,4 +1,5 @@
-pandas
-scikit-learn==1.3.0 # Pinning versions is crucial
-pyyaml
-numpy
+pandas==1.5.3
+scikit-learn==1.3.0
+pyyaml==6.0
+numpy==1.24.3
+dvc
