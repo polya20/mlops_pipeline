@@ -18,7 +18,6 @@ class JackpotOptimizerStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # This parameter receives the Docker image tag from the CI/CD pipeline
         image_tag = self.node.try_get_context("image_tag") or "latest"
 
         # --- 1. Core Infrastructure ---
@@ -28,14 +27,13 @@ class JackpotOptimizerStack(Stack):
             versioned=True
         )
         
-        # This construct automatically uploads local files from ../configs and ../data to S3 upon deployment
         s3_deployment.BucketDeployment(self, "DeployPipelineAssets",
             sources=[
                 s3_deployment.Source.asset("../configs"),
                 s3_deployment.Source.asset("../data")
             ],
             destination_bucket=artifact_bucket,
-            exclude=["*.dvc", "*/.gitignore"] # Exclude unnecessary files
+            exclude=["*.dvc", "*/.gitignore"]
         )
 
         ecr_repository = ecr.Repository.from_repository_name(self, "MLOpsRepo", "jackpot-optimizer")
@@ -61,7 +59,7 @@ class JackpotOptimizerStack(Stack):
         artifact_bucket.grant_read(optimizer_lambda)
         optimizer_lambda.add_to_role_policy(iam.PolicyStatement(
             actions=["secretsmanager:GetSecretValue"],
-            resources=["arn:aws:secretsmanager:*:*:secret:lottery/*"] # Scoped to secrets with the "lottery/" prefix
+            resources=["arn:aws:secretsmanager:*:*:secret:lottery/*"]
         ))
 
         recommendation_topic = sns.Topic(self, "RecommendationTopic")
@@ -69,58 +67,61 @@ class JackpotOptimizerStack(Stack):
 
         # --- 2. Step Functions Workflow Definition ---
         
-        # Task to run the SageMaker Training Job
         train_task = sfn_tasks.SageMakerCreateTrainingJob(self, "TrainSalesModel",
             training_job_name=sfn.JsonPath.string_at("$$.Execution.Name"),
-            role=sagemaker_role,
-            algorithm_specification=sfn_tasks.AlgorithmSpecification(
-                training_image=sfn_tasks.TrainingImage.from_ecr_repository(
-                    repository=ecr_repository,
-                    tag=image_tag
-                ),
-                training_input_mode=sfn_tasks.InputMode.FILE
-            ),
-            hyper_parameters={
+            
+            # --- START OF FINAL FIX ---
+            # The AlgorithmSpecification parameter expects a TaskInput object,
+            # which resolves to a dictionary matching the SageMaker API payload.
+            algorithm_specification=sfn.TaskInput.from_object({
+                "TrainingImage": ecr_repository.repository_uri_for_tag(image_tag),
+                "TrainingInputMode": "File"
+            }),
+            hyper_parameters=sfn.TaskInput.from_object({
                 "config_s3_uri": f"s3://{artifact_bucket.bucket_name}/configs/england.yaml",
                 "data_path": f"s3://{artifact_bucket.bucket_name}/data/lottery_sales.csv.gz"
-            },
-            input_data_config=[sfn_tasks.Channel(channel_name="training", data_source=sfn_tasks.DataSource(
-                s3_data_source=sfn_tasks.S3DataSource(
-                    s3_data_type=sfn_tasks.S3DataType.S3_PREFIX,
-                    s3_location=sfn.S3Location(
-                        bucket=artifact_bucket,
-                        key_prefix="data/"
+            }),
+            input_data_config=[
+                sfn_tasks.Channel(
+                    channel_name="training",
+                    data_source=sfn_tasks.DataSource(
+                        s3_data_source=sfn_tasks.S3DataSource(
+                            s3_data_type=sfn_tasks.S3DataType.S3_PREFIX,
+                            s3_location=sfn.S3Location(
+                                bucket=artifact_bucket,
+                                key_prefix="data/"
+                            )
+                        )
                     )
                 )
-            ))],
+            ],
+            # --- END OF FINAL FIX ---
+
             output_data_config=sfn_tasks.OutputDataConfig(s3_output_path=f"s3://{artifact_bucket.bucket_name}/models"),
+            role=sagemaker_role,
             result_path="$.Model"
         )
         
-        # Task to run the Lambda-based optimization
         optimize_task = sfn_tasks.LambdaInvoke(self, "OptimizeJackpot",
             lambda_function=optimizer_lambda,
             payload=sfn.TaskInput.from_object({
                 "model_s3_path": sfn.JsonPath.string_at("$.Model.ModelArtifacts.S3ModelArtifacts"),
-                "country": "england" # This can be made dynamic in a Map state
+                "country": "england"
             }),
             result_path="$.Recommendation"
         )
         
-        # Task to publish the result to SNS
         notify_task = sfn_tasks.SnsPublish(self, "NotifyStakeholders",
             topic=recommendation_topic,
             message=sfn.TaskInput.from_json_path_at("$.Recommendation.Payload.body"),
             subject="Weekly Jackpot Recommendation"
         )
         
-        # State for handling failures
         failure_state = sfn.Fail(self, "PipelineFailed",
             cause="A step in the MLOps pipeline failed.",
             error="JobFailed"
         )
 
-        # Chain the workflow together with error handling
         chain = sfn.Chain.start(train_task).next(optimize_task).next(notify_task)
         train_task.add_catch(failure_state, result_path="$.error-info")
         optimize_task.add_catch(failure_state, result_path="$.error-info")
@@ -131,8 +132,7 @@ class JackpotOptimizerStack(Stack):
         )
 
         # --- 3. Event-Driven Trigger ---
-        # Rule to trigger the state machine weekly
         events.Rule(self, "WeeklyTriggerRule",
-            schedule=events.Schedule.cron(minute="0", hour="20", week_day="WED"), # Every Wednesday at 8 PM UTC
+            schedule=events.Schedule.cron(minute="0", hour="20", week_day="WED"),
             targets=[targets.SfnStateMachine(state_machine)]
         )
