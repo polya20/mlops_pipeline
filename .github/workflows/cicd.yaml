@@ -1,35 +1,63 @@
-name: Debug OIDC Connection
+name: Deploy Jackpot Optimizer Pipeline to AWS
 on:
   push:
-    branches: [ main ]
+    branches: [ main ] # This workflow runs on pushes to the main branch
+env:
+  AWS_REGION: "us-east-1"
+  ECR_REPOSITORY: "jackpot-optimizer"
 
 jobs:
-  debug-oidc:
+  deploy:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write # This is essential to request the token
       contents: read
+      id-token: write # This is required for OIDC
 
     steps:
-      - name: Debug OIDC Token
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # This secret must contain the full ARN of the role to assume
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies & Run Pytest
         run: |
-          echo "Requesting OIDC Token from GitHub..."
-          # The audience 'sts.amazonaws.com' is what we need for AWS
-          TOKEN=$(curl -s -X POST -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" -H "Content-Type: application/json" "$ACTIONS_ID_TOKEN_REQUEST_URL" -d '{"audience": "sts.amazonaws.com"}' | jq -r .value)
-          
-          echo "Token received. Decoding JWT..."
-          
-          # Split the token and decode the payload part
-          PAYLOAD=$(echo $TOKEN | cut -d. -f2)
-          DECODED_PAYLOAD=$(echo $PAYLOAD | base64 --decode)
-          
-          echo "-----------------------------------"
-          echo "OIDC TOKEN PAYLOAD:"
-          echo "$DECODED_PAYLOAD" | jq .
-          echo "-----------------------------------"
-          
-          # Extract and print the critical 'sub' claim
-          SUB_CLAIM=$(echo $DECODED_PAYLOAD | jq -r .sub)
-          echo "THE CRITICAL 'sub' CLAIM IS:"
-          echo "$SUB_CLAIM"
-          echo "-----------------------------------"
+          pip install -r requirements.txt
+          pip install pytest
+          pytest tests/
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Setup Node.js for CDK
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Deploy AWS CDK Stack
+        run: |
+          cd iac
+          npm install -g aws-cdk
+          pip install -r requirements.txt
+          # Pass the new image tag to the CDK stack for deployment
+          cdk deploy --require-approval never --context image_tag=${{ steps.build-image.outputs.image_tag }}
