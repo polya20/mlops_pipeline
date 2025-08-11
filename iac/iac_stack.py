@@ -65,7 +65,7 @@ class JackpotOptimizerStack(Stack):
         ))
 
         recommendation_topic = sns.Topic(self, "RecommendationTopic")
-        recommendation_topic.add_subscription(subscriptions.EmailSubscription("subhojit20@gmail.com")) 
+        recommendation_topic.add_subscription(subscriptions.EmailSubscription("your-email@example.com")) # <-- CHANGE THIS
 
         # --- 2. Step Functions Workflow Definition ---
         
