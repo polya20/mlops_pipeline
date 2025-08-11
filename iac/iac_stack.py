@@ -24,8 +24,8 @@ class JackpotOptimizerStack(Stack):
         
         # Upload config and data files to S3 for the pipeline to use
         s3_deployment.BucketDeployment(self, "DeployPipelineAssets",
-            sources=[s3_deployment.Source.asset("./configs"), s3_deployment.Source.asset("./data")],
-            destination_bucket=artifact_bucket
+            sources=[s3_deployment.Source.asset("../configs"), s3_deployment.Source.asset("../data")],
+            destination_bucket=artifact_bucket, exclude=["*.dvc", "*/.gitignore"]
         )
 
         ecr_repository = ecr.Repository.from_repository_name(self, "MLOpsRepo", "jackpot-optimizer")
