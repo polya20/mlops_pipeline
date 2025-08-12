@@ -39,6 +39,7 @@ This section tracks the completion of all requirements outlined in the take-home
 ---
 
 ### **2. Live Architecture Diagram**
+<img width="3840" height="2554" alt="mloops_pipe_line" src="https://github.com/user-attachments/assets/afb6ee18-db70-48de-9c95-cc4fa9083c5c" />
 
 
 
