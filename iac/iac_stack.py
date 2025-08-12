@@ -9,8 +9,7 @@ from aws_cdk import (
     aws_events_targets as targets,
     aws_lambda as _lambda,
     aws_sns as sns,
-    aws_sns_subscriptions as subscriptions,
-    aws_s3_deployment as s3_deployment
+    aws_sns_subscriptions as subscriptions
 )
 from constructs import Construct
 
@@ -21,46 +20,34 @@ class JackpotOptimizerStack(Stack):
         image_tag = self.node.try_get_context("image_tag") or "latest"
 
         # --- 1. Core Infrastructure ---
+        # Simple S3 bucket without auto-delete to avoid custom resources
         artifact_bucket = s3.Bucket(self, "ArtifactBucket",
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True,
+            removal_policy=RemovalPolicy.RETAIN,
             versioned=True
-        )
-        
-        s3_deployment.BucketDeployment(self, "DeployPipelineAssets",
-            sources=[
-                s3_deployment.Source.asset("../configs"),
-                s3_deployment.Source.asset("../data")
-            ],
-            destination_bucket=artifact_bucket,
-            exclude=["*.dvc", "*/.gitignore"]
         )
 
         ecr_repository = ecr.Repository.from_repository_name(self, "MLOpsRepo", "jackpot-optimizer")
 
-        sagemaker_role = iam.Role(self, "SageMakerExecutionRole",
-            assumed_by=iam.ServicePrincipal("sagemaker.amazonaws.com"),
-            managed_policies=[
-                iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSageMakerFullAccess"),
-                iam.ManagedPolicy.from_aws_managed_policy_name("AmazonEC2ContainerRegistryReadOnly"),
-            ]
+        # Use existing roles - you'll need to create these manually first
+        # Replace these ARNs with your actual role ARNs
+        sagemaker_role = iam.Role.from_role_arn(self, "SageMakerExecutionRole", 
+            role_arn=f"arn:aws:iam::{self.account}:role/SageMakerExecutionRole"
         )
-        artifact_bucket.grant_read_write(sagemaker_role)
+
+        lambda_role = iam.Role.from_role_arn(self, "LambdaExecutionRole",
+            role_arn=f"arn:aws:iam::{self.account}:role/LambdaExecutionRole"
+        )
 
         optimizer_lambda = _lambda.DockerImageFunction(self, "OptimizerFunction",
             code=_lambda.DockerImageCode.from_ecr(ecr_repository,
-                tag_or_digest=image_tag,  # Changed from 'tag' to 'tag_or_digest'
+                tag_or_digest=image_tag,
                 cmd=["lambda_handler.optimizer.handler.lambda_handler"]
             ),
             memory_size=1024,
             timeout=Duration.minutes(5),
-            environment={"ARTIFACT_BUCKET": artifact_bucket.bucket_name}
+            environment={"ARTIFACT_BUCKET": artifact_bucket.bucket_name},
+            role=lambda_role
         )
-        artifact_bucket.grant_read(optimizer_lambda)
-        optimizer_lambda.add_to_role_policy(iam.PolicyStatement(
-            actions=["secretsmanager:GetSecretValue"],
-            resources=["arn:aws:secretsmanager:*:*:secret:lottery/*"]
-        ))
 
         recommendation_topic = sns.Topic(self, "RecommendationTopic")
         recommendation_topic.add_subscription(subscriptions.EmailSubscription("subhojit20@gmail.com")) 
@@ -72,8 +59,7 @@ class JackpotOptimizerStack(Stack):
             role=sagemaker_role,
             algorithm_specification=sfn_tasks.AlgorithmSpecification(
                 training_image=sfn_tasks.DockerImage.from_ecr_repository(
-                    repository=ecr_repository,
-                    # tag argument is not valid here; handled by default latest or implicit latest tag
+                    repository=ecr_repository
                 ),
                 training_input_mode=sfn_tasks.InputMode.FILE
             ),
@@ -122,9 +108,15 @@ class JackpotOptimizerStack(Stack):
         train_task.add_catch(failure_state, result_path="$.error-info")
         optimize_task.add_catch(failure_state, result_path="$.error-info")
 
+        # Use existing Step Functions role
+        step_functions_role = iam.Role.from_role_arn(self, "StepFunctionsRole",
+            role_arn=f"arn:aws:iam::{self.account}:role/StepFunctionsExecutionRole"
+        )
+
         state_machine = sfn.StateMachine(self, "JackpotStateMachine",
             definition=chain,
-            timeout=Duration.hours(1)
+            timeout=Duration.hours(1),
+            role=step_functions_role
         )
 
         # --- 3. Event-Driven Trigger ---
