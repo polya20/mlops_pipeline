@@ -58,7 +58,7 @@ class JackpotOptimizerStack(Stack):
             training_job_name=sfn.JsonPath.string_at("$$.Execution.Name"),
             role=sagemaker_role,
             algorithm_specification=sfn_tasks.AlgorithmSpecification(
-                training_image_uri=ecr_repository.repository_uri_for_tag(image_tag),
+                training_image=ecr_repository.repository_uri_for_tag(image_tag),
                 training_input_mode=sfn_tasks.InputMode.FILE
             ),
             hyperparameters={
