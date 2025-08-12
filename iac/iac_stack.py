@@ -59,7 +59,8 @@ class JackpotOptimizerStack(Stack):
             role=sagemaker_role,
             algorithm_specification=sfn_tasks.AlgorithmSpecification(
                 training_image=sfn_tasks.DockerImage.from_ecr_repository(
-                    repository=ecr_repository
+                    repository=ecr_repository,
+                    tag=image_tag
                 ),
                 training_input_mode=sfn_tasks.InputMode.FILE
             ),
