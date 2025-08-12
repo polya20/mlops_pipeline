@@ -58,8 +58,10 @@ class JackpotOptimizerStack(Stack):
             training_job_name=sfn.JsonPath.string_at("$$.Execution.Name"),
             role=sagemaker_role,
             algorithm_specification=sfn_tasks.AlgorithmSpecification(
-                training_image=ecr_repository.repository_uri_for_tag(image_tag),
-                training_input_mode=sfn_tasks.InputMode.FILE
+                training_image=sfn_tasks.DockerImage.from_registry(
+                    ecr_repository.repository_uri_for_tag(image_tag)
+                ),
+                training_input_mode=sfn_tasks.InputMode.FILEsssss
             ),
             hyperparameters={
                 "config_s3_uri": f"s3://{artifact_bucket.bucket_name}/configs/england.yaml",
