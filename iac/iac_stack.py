@@ -86,9 +86,18 @@ class JackpotOptimizerStack(Stack):
         
         optimize_task = sfn_tasks.LambdaInvoke(self, "OptimizeJackpot",
             lambda_function=optimizer_lambda,
+            # payload=sfn.TaskInput.from_object({
+            #     "model_s3_path": sfn.JsonPath.string_at("$.Model.ModelArtifacts.S3ModelArtifacts"),
+            #     "country": "england"
+            # }),
             payload=sfn.TaskInput.from_object({
-                "model_s3_path": sfn.JsonPath.string_at("$.Model.ModelArtifacts.S3ModelArtifacts"),
-                "country": "england"
+            # Construct the S3 path manually based on your output configuration
+            "model_s3_path": sfn.JsonPath.format(
+                "s3://{}/models/{}/output/model.tar.gz",
+                artifact_bucket.bucket_name,
+                sfn.JsonPath.string_at("$$.Execution.Name")
+            ),
+            "country": "england"
             }),
             result_path="$.Recommendation"
         )
