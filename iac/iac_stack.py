@@ -61,7 +61,7 @@ class JackpotOptimizerStack(Stack):
                 training_image=sfn_tasks.DockerImage.from_registry(
                     ecr_repository.repository_uri_for_tag(image_tag)
                 ),
-                training_input_mode=sfn_tasks.InputMode.FILEsssss
+                training_input_mode=sfn_tasks.InputMode.FILE
             ),
             hyperparameters={
                 "config_s3_uri": f"s3://{artifact_bucket.bucket_name}/configs/england.yaml",
