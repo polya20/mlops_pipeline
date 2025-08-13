@@ -20,7 +20,7 @@ The core of the project is to productionize a sales prediction model and wrap it
 
 ### **1. Project Requirements Checklist**
 
-This section tracks the completion of all requirements outlined in the take-home assignment.
+This section tracks the completion of all first requirements
 
 | Requirement | Status | Implementation Notes |
 | :--- | :---: | :--- |
