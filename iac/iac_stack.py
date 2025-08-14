@@ -28,30 +28,26 @@ class JackpotOptimizerStack(Stack):
 
         ecr_repository = ecr.Repository.from_repository_name(self, "MLOpsRepo", "jackpot-optimizer")
 
-        # Use existing SageMaker roles for all services (simpler and more reliable)
-        sagemaker_execution_role_arn = f"arn:aws:iam::{self.account}:role/AmazonSageMaker-ExecutionRole-20250811T230696"
-        
+        # Use existing roles - you'll need to create these manually first
+        # Replace these ARNs with your actual role ARNs
         sagemaker_role = iam.Role.from_role_arn(self, "SageMakerExecutionRole", 
-            role_arn=sagemaker_execution_role_arn
+            role_arn=f"arn:aws:iam::{self.account}:role/SageMakerExecutionRole"
         )
 
         lambda_role = iam.Role.from_role_arn(self, "LambdaExecutionRole",
-            role_arn=sagemaker_execution_role_arn
+            role_arn=f"arn:aws:iam::{self.account}:role/LambdaExecutionRole"
         )
 
         optimizer_lambda = _lambda.DockerImageFunction(self, "OptimizerFunction",
-            code=_lambda.DockerImageCode.from_ecr(ecr_repository, tag_or_digest=image_tag),
+            code=_lambda.DockerImageCode.from_ecr(ecr_repository,
+                tag_or_digest=image_tag,
+                cmd=["lambda_handler.optimizer.handler.lambda_handler"]
+            ),
             memory_size=1024,
             timeout=Duration.minutes(5),
             environment={"ARTIFACT_BUCKET": artifact_bucket.bucket_name},
             role=lambda_role
         )
-        
-        # Grant Lambda additional permissions if needed
-        optimizer_lambda.add_to_role_policy(iam.PolicyStatement(
-            actions=["sagemaker:DescribeTrainingJob"],
-            resources=["*"]
-        ))
 
         recommendation_topic = sns.Topic(self, "RecommendationTopic")
         recommendation_topic.add_subscription(subscriptions.EmailSubscription("subhojit20@gmail.com")) 
@@ -59,7 +55,7 @@ class JackpotOptimizerStack(Stack):
         # --- 2. Step Functions Workflow Definition ---
         
         train_task = sfn_tasks.SageMakerCreateTrainingJob(self, "TrainSalesModel",
-            # Remove training_job_name - let CDK auto-generate a compliant one
+            training_job_name=sfn.JsonPath.string_at("$$.Execution.Name"),
             role=sagemaker_role,
             algorithm_specification=sfn_tasks.AlgorithmSpecification(
                 training_image=sfn_tasks.DockerImage.from_registry(
@@ -90,10 +86,18 @@ class JackpotOptimizerStack(Stack):
         
         optimize_task = sfn_tasks.LambdaInvoke(self, "OptimizeJackpot",
             lambda_function=optimizer_lambda,
+            # payload=sfn.TaskInput.from_object({
+            #     "model_s3_path": sfn.JsonPath.string_at("$.Model.ModelArtifacts.S3ModelArtifacts"),
+            #     "country": "england"
+            # }),
             payload=sfn.TaskInput.from_object({
-                # Pass the training job ARN - let Lambda handle getting the model artifacts
-                "training_job_arn": sfn.JsonPath.string_at("$.Model.TrainingJobArn"),
-                "country": "england"
+            # Construct the S3 path manually based on your output configuration
+            "model_s3_path": sfn.JsonPath.format(
+                "s3://{}/models/{}/output/model.tar.gz",
+                artifact_bucket.bucket_name,
+                sfn.JsonPath.string_at("$$.Execution.Name")
+            ),
+            "country": "england"
             }),
             result_path="$.Recommendation"
         )
@@ -113,9 +117,9 @@ class JackpotOptimizerStack(Stack):
         train_task.add_catch(failure_state, result_path="$.error-info")
         optimize_task.add_catch(failure_state, result_path="$.error-info")
 
-        # Use the same SageMaker role for Step Functions
+        # Use existing Step Functions role
         step_functions_role = iam.Role.from_role_arn(self, "StepFunctionsRole",
-            role_arn=sagemaker_execution_role_arn
+            role_arn=f"arn:aws:iam::{self.account}:role/StepFunctionsExecutionRole"
         )
 
         state_machine = sfn.StateMachine(self, "JackpotStateMachine",
