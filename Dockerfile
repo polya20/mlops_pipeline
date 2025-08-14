@@ -1,23 +1,19 @@
-# Base image
-FROM python:3.9-slim
+# Use AWS Lambda Python base image
+FROM public.ecr.aws/lambda/python:3.9
 
-# Set working directory
-WORKDIR /app
-
-# Install dependencies
-COPY requirements.txt .
+# Copy requirements and install dependencies
+COPY requirements.txt ${LAMBDA_TASK_ROOT}
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
-COPY ./src ./src
-COPY ./configs ./configs    
+# Copy source code to the Lambda task root
+COPY ./src ${LAMBDA_TASK_ROOT}/src
+COPY ./configs ${LAMBDA_TASK_ROOT}/configs
+COPY ./lambda_handler ${LAMBDA_TASK_ROOT}/lambda_handler
 
+# Create __init__.py files to make Python packages
+RUN touch ${LAMBDA_TASK_ROOT}/lambda_handler/__init__.py
+RUN touch ${LAMBDA_TASK_ROOT}/lambda_handler/optimizer/__init__.py
+RUN touch ${LAMBDA_TASK_ROOT}/src/__init__.py
 
-COPY ./lambda_handler ./lambda_handler
-
-
-# Set entrypoint
-ENTRYPOINT ["python"]
-
-
-
+# Set the Lambda handler
+CMD ["lambda_handler.optimizer.handler.lambda_handler"]
